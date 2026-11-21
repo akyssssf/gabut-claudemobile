@@ -67,7 +67,7 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
       <b>Pemain di ruangan</b>
       <ul class="pl" id="plist"></ul>
       <p class="muted" id="lobby-hint"></p>
-      <button id="start">Mulai sekarang</button>
+      <button id="start" disabled>Menunggu pemain…</button>
       <form id="nf" class="row" style="margin-top:14px"><input id="ni" type="text" maxlength="14" placeholder="Ganti nama (opsional)" autocomplete="off"><button class="alt">Ganti</button></form>
     </div>
   </section>
@@ -87,7 +87,7 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
   <section id="s-over" class="card" hidden>
     <b style="font-size:20px">🏆 Game selesai!</b>
     <ol class="rank" id="rank"></ol>
-    <button id="again">Main lagi sekarang</button>
+    <button id="again">Main lagi</button>
     <p class="muted" id="again-hint"></p>
   </section>
 </div>
@@ -132,7 +132,7 @@ var TOPICS=[
 ];
 var COLORS=['#111111','#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa','#8d6e63','#ffffff'];
 var SIZES=[4,9,18];
-var DRAW_SECS=40, PICK_SECS=8, END_SECS=10, WAIT_SECS=8, AGAIN_SECS=15;
+var DRAW_SECS=40, PICK_SECS=8, END_SECS=10, AGAIN_SECS=15;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -187,10 +187,7 @@ function tick(){
   if(!g){ if(lastG&&lastG.phase!=='lobby'){pubG(Object.assign({},lastG));return} g={phase:'lobby'} }
   var el=Date.now()-phaseAt;
   if(g.phase==='lobby'){
-    if(ps.length>=2)pubG({phase:'wait',dur:WAIT_SECS});
-  }else if(g.phase==='wait'){
-    if(ps.length<2)pubG({phase:'lobby'});
-    else if(el>g.dur*1000)startGame();
+    /* menunggu seseorang menekan Mulai */
   }else if(g.phase==='pick'){
     if(!byPeer(g.drawer)||el>(PICK_SECS+3)*1000) nextRound(g);
   }else if(g.phase==='draw'){
@@ -266,6 +263,10 @@ function connect(R_){
     paint(p,clamp(d.ci,0,8)|0,clamp(d.si,0,2)|0);
   });
   R.on('c',function(m){var g=curG();if(m.isMe||!g||m.peer!==g.drawer||!m.data||m.data.n!==g.n)return;clearCv()});
+  R.on('start',function(m){
+    if(!amHost())return;var g=curG();
+    if(!g||g.phase==='lobby'||g.phase==='over')startGame();
+  });
   R.on('w',function(m){
     var d=m.data;if(!amHost()||!d)return;var g=curG();
     if(g&&g.phase==='pick'&&m.peer===g.drawer&&d.n===g.n&&typeof d.h==='string'&&typeof d.hint==='string'){
@@ -283,7 +284,8 @@ function connect(R_){
   R.onPeers(function(ch){peers=ch.peers;update()});
   peers=R.peers();
   var done=function(n){myName=(savedName||n||('Pemain'+(100+Math.floor(Math.random()*900)))).slice(0,14);pres({name:myName,t:joinT,s:0});update()};
-  window.claude.use('user').then(function(us){return us?us.me():null}).then(function(v){done(v&&v.name)}).catch(function(){done('')});
+  if(window.claude&&window.claude.use)window.claude.use('user').then(function(us){return us?us.me():null}).then(function(v){done(v&&v.name)}).catch(function(){done('')});
+  else done('');
 }
 
 function chooseWord(w){
@@ -297,8 +299,9 @@ $('nf').addEventListener('submit',function(e){
   myName=v;try{localStorage.setItem('gg-name',v)}catch(x){}
   pres({name:v});$('ni').value='';update();
 });
-$('start').addEventListener('click',startGame);
-$('again').addEventListener('click',function(){if(amHost())pubG({phase:'lobby'})});
+function requestStart(){if(players().length<2)return;if(amHost())startGame();else emit('start',{})}
+$('start').addEventListener('click',requestStart);
+$('again').addEventListener('click',requestStart);
 $('gf').addEventListener('submit',function(e){
   e.preventDefault();var g=curG(),t=$('gi').value.trim();$('gi').value='';
   if(!g||g.phase!=='draw'||!t)return;
@@ -316,19 +319,20 @@ function update(){
   if(g&&(!lastG||g.v>=lastG.v))lastG=g;
   if(g&&(g.n!==seen.n||g.phase!==seen.phase)){
     seen={n:g.n,phase:g.phase,at:Date.now()};
+    if(g.phase==='pick'&&g.n===1){score=0;myGuessOk=-1;drawerScored=-1;pres({s:0,sv:0})}
     if(g.phase==='pick'){clearCv();myWord=null;buf=[];drawing=false;chatItems=[];addChat('sys','Ronde '+g.n+'/'+g.total+' — '+esc(nameOf(g.drawer))+' yang gambar')}
     if(g.phase==='lobby'){score=0;myGuessOk=-1;drawerScored=-1;pres({s:0,sv:0})}
   }
-  var inLobby=!g||g.phase==='lobby'||g.phase==='wait', inGame=!!g&&(g.phase==='pick'||g.phase==='draw'||g.phase==='end'), over=!!g&&g.phase==='over';
+  var inLobby=!g||g.phase==='lobby', inGame=!!g&&(g.phase==='pick'||g.phase==='draw'||g.phase==='end'), over=!!g&&g.phase==='over';
   show('s-lobby',!!myName&&inLobby);show('s-game',!!myName&&inGame);show('s-over',!!myName&&over);
   if(!myName)return;
   var iAmHost=amHost();
 
   if(inLobby){
     $('plist').innerHTML=ps.slice().sort(byT).map(function(p,i){return '<li>'+(i===0?'👑 ':'')+esc(p.presence.name)+(p.peer===(m&&m.peer)?' (kamu)':'')+'</li>'}).join('');
-    $('start').hidden=!(iAmHost&&ps.length>=2);
-    if(g&&g.phase==='wait'){var cd=Math.max(0,(g.dur||WAIT_SECS)-Math.floor((Date.now()-seen.at)/1000));$('lobby-hint').textContent='⏳ Game mulai otomatis dalam '+cd+' detik… yang lain masih boleh nyusul masuk.'}
-    else $('lobby-hint').textContent='Kamu sudah masuk! Menunggu teman lain buka link ini (minimal 2 orang), nanti game mulai sendiri.';
+    $('start').disabled=ps.length<2;
+    $('start').textContent=ps.length<2?'Menunggu pemain… ('+ps.length+'/2)':'▶ Mulai game ('+ps.length+' pemain)';
+    $('lobby-hint').textContent=ps.length<2?'Kamu sudah masuk! Butuh minimal 2 pemain. Ajak temanmu buka link yang sama.':'Kalau semua sudah masuk, siapa pun boleh pencet Mulai. Tiap orang dapat giliran gambar sekali.';
   }
 
   if(inGame){
@@ -372,7 +376,7 @@ function update(){
   if(over){
     $('rank').innerHTML=ps.slice().sort(function(a,b){return (b.presence.s||0)-(a.presence.s||0)}).map(function(p,i){
       return '<li>'+(['🥇 ','🥈 ','🥉 '][i]||'')+esc(p.presence.name)+' — <b>'+(p.presence.s||0)+'</b></li>'}).join('');
-    $('again').hidden=!iAmHost;$('again-hint').textContent='Game baru mulai otomatis sebentar lagi…';
+    $('again').hidden=false;$('again-hint').textContent='Atau tunggu sebentar, nanti balik ke lobby otomatis.';
   }
 }
 var lastTalk='';
@@ -407,10 +411,84 @@ function renderTalk(g,ps,m){
 }
 setInterval(function(){tick();if(myName)update()},400);
 
+/* ---------- MQTT room (dipakai kalau tidak dibuka lewat claude.ai, mis. GitHub Pages) ---------- */
+var BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081'];
+function mqttRoom(roomId,brokers){
+  return new Promise(function(resolve,reject){
+    var id=Math.random().toString(36).slice(2,10), base='gambargabut/v1/'+roomId;
+    var pres={}, remote={}, hs={}, pcbs=[], snap=[], client=null, isUp=false, pubT=null, rbT=null, resolved=false;
+    function rebuild(){
+      var arr=[{peer:id,by:null,isMe:true,sameTab:true,kind:'viewer',guest:false,presence:pres,updatedAt:Date.now()}];
+      Object.keys(remote).sort().forEach(function(k){arr.push({peer:k,by:null,isMe:false,sameTab:false,kind:'viewer',guest:false,presence:remote[k].p,updatedAt:remote[k].seen})});
+      snap=arr;
+      if(!rbT)rbT=setTimeout(function(){rbT=null;pcbs.forEach(function(f){f({peers:snap,joined:[],left:[],updated:[]})})},0);
+    }
+    function pubPres(){pubT=null;if(client&&isUp)client.publish(base+'/pr',JSON.stringify({f:id,p:pres}))}
+    function schedPub(){if(!pubT)pubT=setTimeout(pubPres,80)}
+    function deliver(topic,msg){(hs[topic]||[]).forEach(function(f){try{f(msg)}catch(e){}})}
+    var room={
+      presence:function(patch){Object.keys(patch).forEach(function(k){if(patch[k]===null)delete pres[k];else pres[k]=patch[k]});pres=Object.assign({},pres);rebuild();schedPub();return Promise.resolve()},
+      emit:function(topic,data){
+        if(client&&isUp)client.publish(base+'/ev',JSON.stringify({f:id,t:topic,d:data}));
+        deliver(topic,{peer:id,by:null,isMe:true,sameTab:true,kind:'viewer',guest:false,topic:topic,data:data});
+        return Promise.resolve()},
+      on:function(topic,fn){(hs[topic]=hs[topic]||[]).push(fn);return function(){}},
+      peers:function(){return snap},
+      onPeers:function(fn){pcbs.push(fn);return function(){}},
+      connected:function(){return isUp},
+      join:function(){return Promise.resolve(room)}
+    };
+    function onMsg(topic,payload){
+      var d;try{d=JSON.parse(payload.toString())}catch(e){return}
+      if(!d||typeof d.f!=='string'||d.f===id)return;
+      if(topic===base+'/pr'){
+        if(d.bye){delete remote[d.f];rebuild();return}
+        var isNew=!remote[d.f];remote[d.f]={p:(d.p&&typeof d.p==='object')?d.p:{},seen:Date.now()};
+        if(isNew)schedPub();
+        rebuild();
+      }else if(topic===base+'/ev'&&typeof d.t==='string'){
+        deliver(d.t,{peer:d.f,by:null,isMe:false,sameTab:false,kind:'viewer',guest:false,topic:d.t,data:d.d});
+      }
+    }
+    function tryBroker(i){
+      if(i>=brokers.length){if(!resolved)reject(new Error('no broker'));return}
+      var done=false, c=mqtt.connect(brokers[i],{clientId:'gg-'+id,clean:true,connectTimeout:6000,reconnectPeriod:2500,
+        will:{topic:base+'/pr',payload:JSON.stringify({f:id,bye:1}),qos:0}});
+      var to=setTimeout(function(){if(!done){done=true;c.end(true);tryBroker(i+1)}},8000);
+      c.on('connect',function(){
+        isUp=true;client=c;
+        c.subscribe([base+'/pr',base+'/ev'],function(){pubPres()});
+        if(!done){done=true;clearTimeout(to);
+          if(!resolved){resolved=true;resolve(room)}}
+      });
+      c.on('close',function(){isUp=false});
+      c.on('error',function(){if(!done){done=true;clearTimeout(to);c.end(true);tryBroker(i+1)}});
+      c.on('message',onMsg);
+    }
+    setInterval(function(){
+      var now=Date.now(),ch=false;Object.keys(remote).forEach(function(k){if(now-remote[k].seen>11000){delete remote[k];ch=true}});
+      if(ch)rebuild();
+    },2000);
+    setInterval(function(){if(client&&isUp)pubPres()},4000);
+    window.addEventListener('pagehide',function(){try{if(client&&isUp)client.publish(base+'/pr',JSON.stringify({f:id,bye:1}));if(client)client.end(true)}catch(e){}});
+    rebuild();
+    tryBroker(0);
+  });
+}
+function startMqtt(){
+  var w=$('warn');
+  var rid=(location.hash.replace('#','').toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,24))||'umum';
+  function fail(){w.hidden=false;w.textContent='Gagal tersambung ke server realtime. Cek koneksi internet lalu muat ulang.'}
+  var sc=document.createElement('script');sc.src='mqtt.min.js';
+  sc.onload=function(){mqttRoom(rid,window.GG_BROKERS||BROKERS).then(connect).catch(fail)};
+  sc.onerror=fail;
+  document.head.appendChild(sc);
+}
+
 /* ---------- boot ---------- */
 function boot(){
   var w=$('warn');
-  if(!window.claude||!window.claude.use){w.hidden=false;w.textContent='Game ini butuh koneksi room untuk multiplayer. Buka lewat link claude.ai.';return}
+  if(!window.claude||!window.claude.use){startMqtt();return}
   window.claude.use('room').then(function(base){
     if(!base){w.hidden=false;w.textContent='Room belum tersambung. Pastikan kamu login dan sudah diundang ke halaman ini, lalu muat ulang.';return}
     return base.join('gambar-gabut').catch(function(){return base}).then(connect);
