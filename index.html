@@ -53,17 +53,14 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
   <h1>🎨 Gambar Gabut</h1>
   <div id="warn" class="card" hidden></div>
 
-  <section id="s-name" class="card">
-    <p style="margin-top:0">Satu orang menggambar, yang lain menebak. Makin cepat nebak, makin banyak poin!</p>
-    <form id="nf" class="row"><input id="ni" type="text" maxlength="14" placeholder="Nama kamu" autocomplete="off"><button>Masuk</button></form>
-  </section>
 
   <section id="s-lobby" hidden>
     <div class="card">
       <b>Pemain di ruangan</b>
       <ul class="pl" id="plist"></ul>
       <p class="muted" id="lobby-hint"></p>
-      <button id="start">Mulai game</button>
+      <button id="start">Mulai sekarang</button>
+      <form id="nf" class="row" style="margin-top:14px"><input id="ni" type="text" maxlength="14" placeholder="Ganti nama (opsional)" autocomplete="off"><button class="alt">Ganti</button></form>
     </div>
   </section>
 
@@ -81,7 +78,7 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
   <section id="s-over" class="card" hidden>
     <b style="font-size:20px">🏆 Game selesai!</b>
     <ol class="rank" id="rank"></ol>
-    <button id="again">Main lagi</button>
+    <button id="again">Main lagi sekarang</button>
     <p class="muted" id="again-hint"></p>
   </section>
 </div>
@@ -92,7 +89,7 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
 var WORDS=['sate','bakso','becak','wayang','batik','gunung','pantai','kucing','ayam','ikan','rumah','sepeda','motor','pesawat','kapal','hujan','pelangi','bulan','matahari','bintang','pohon','bunga','kursi','meja','kasur','bantal','laptop','kamera','kacamata','topi','sepatu','payung','jam','kunci','pintu','jendela','tangga','jembatan','sungai','api','es krim','pizza','burger','kopi','durian','pisang','nanas','semangka','monyet','gajah','jerapah','buaya','ular','kupu kupu','laba laba','hiu','penguin','robot','hantu','naga','raja','polisi','dokter','koki','gitar','piano','drum','bola','balon','kado','lilin','kue ulang tahun','nasi goreng','ojek','bajaj','kodok','sapi','kelinci','bebek','tikus','kura kura','cumi cumi','lampu','kulkas','kipas angin','sapu','gunting','sendok','telur','roti','jam dinding','roket','tenda','api unggun'];
 var COLORS=['#111111','#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa','#8d6e63','#ffffff'];
 var SIZES=[4,9,18];
-var DRAW_SECS=75, PICK_SECS=20, END_SECS=7;
+var DRAW_SECS=75, PICK_SECS=20, END_SECS=7, WAIT_SECS=12, AGAIN_SECS=20;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -111,7 +108,7 @@ var chatItems=[];
 var cv=$('cv'), ctx=cv.getContext('2d');
 var cur={ci:0,si:1}, drawing=false, buf=[], first=true, prevLast=null, flushT=null;
 
-try{myName=''; var sv=localStorage.getItem('gg-name'); if(sv)$('ni').value=sv}catch(e){}
+var savedName='';try{savedName=localStorage.getItem('gg-name')||''}catch(e){}
 
 /* ---------- room helpers ---------- */
 function players(){return peers.filter(function(p){return p.kind==='viewer'&&p.presence&&typeof p.presence.name==='string'&&p.presence.name})}
@@ -140,10 +137,15 @@ function nextRound(g){
 }
 function tick(){
   if(!R||!myName||!amHost())return;
-  var g=curG();
-  if(!g){ if(lastG&&lastG.phase!=='lobby'){pubG(Object.assign({},lastG))} return }
-  var el=Date.now()-phaseAt, ps=players();
-  if(g.phase==='pick'){
+  var g=curG(), ps=players();
+  if(!g){ if(lastG&&lastG.phase!=='lobby'){pubG(Object.assign({},lastG));return} g={phase:'lobby'} }
+  var el=Date.now()-phaseAt;
+  if(g.phase==='lobby'){
+    if(ps.length>=2)pubG({phase:'wait',dur:WAIT_SECS});
+  }else if(g.phase==='wait'){
+    if(ps.length<2)pubG({phase:'lobby'});
+    else if(el>g.dur*1000)startGame();
+  }else if(g.phase==='pick'){
     if(!byPeer(g.drawer)||el>(PICK_SECS+3)*1000) nextRound(g);
   }else if(g.phase==='draw'){
     var guessers=ps.filter(function(p){return p.peer!==g.drawer});
@@ -151,6 +153,8 @@ function tick(){
     if(el>g.dur*1000||!byPeer(g.drawer)||allIn) pubG(Object.assign({},g,{phase:'end'}));
   }else if(g.phase==='end'){
     if(el>END_SECS*1000) nextRound(g);
+  }else if(g.phase==='over'){
+    if(el>AGAIN_SECS*1000) pubG({phase:'lobby'});
   }
 }
 
@@ -231,6 +235,8 @@ function connect(R_){
   });
   R.onPeers(function(ch){peers=ch.peers;update()});
   peers=R.peers();
+  var done=function(n){myName=(savedName||n||('Pemain'+(100+Math.floor(Math.random()*900)))).slice(0,14);pres({name:myName,t:joinT,s:0});update()};
+  window.claude.use('user').then(function(us){return us?us.me():null}).then(function(v){done(v&&v.name)}).catch(function(){done('')});
 }
 
 function chooseWord(w){
@@ -242,7 +248,7 @@ function chooseWord(w){
 $('nf').addEventListener('submit',function(e){
   e.preventDefault();var v=$('ni').value.trim().slice(0,14);if(!v)return;
   myName=v;try{localStorage.setItem('gg-name',v)}catch(x){}
-  pres({name:v,t:joinT,s:0});update();
+  pres({name:v});$('ni').value='';update();
 });
 $('start').addEventListener('click',startGame);
 $('again').addEventListener('click',function(){if(amHost())pubG({phase:'lobby'})});
@@ -266,15 +272,16 @@ function update(){
     if(g.phase==='pick'){clearCv();myWord=null;buf=[];drawing=false;chatItems=[];addChat('sys','Ronde '+g.n+'/'+g.total+' — '+esc(nameOf(g.drawer))+' yang gambar')}
     if(g.phase==='lobby'){score=0;myGuessOk=-1;drawerScored=-1;pres({s:0,sv:0})}
   }
-  var inLobby=!g||g.phase==='lobby', inGame=!!g&&(g.phase==='pick'||g.phase==='draw'||g.phase==='end'), over=!!g&&g.phase==='over';
-  show('s-name',!myName);show('s-lobby',!!myName&&inLobby);show('s-game',!!myName&&inGame);show('s-over',!!myName&&over);
+  var inLobby=!g||g.phase==='lobby'||g.phase==='wait', inGame=!!g&&(g.phase==='pick'||g.phase==='draw'||g.phase==='end'), over=!!g&&g.phase==='over';
+  show('s-lobby',!!myName&&inLobby);show('s-game',!!myName&&inGame);show('s-over',!!myName&&over);
   if(!myName)return;
   var iAmHost=amHost();
 
   if(inLobby){
     $('plist').innerHTML=ps.slice().sort(byT).map(function(p,i){return '<li>'+(i===0?'👑 ':'')+esc(p.presence.name)+(p.peer===(m&&m.peer)?' (kamu)':'')+'</li>'}).join('');
-    $('start').hidden=!iAmHost;$('start').disabled=ps.length<2;
-    $('lobby-hint').textContent=iAmHost?(ps.length<2?'Tunggu minimal 1 teman lagi buka link ini.':'Semua sudah masuk? Gas mulai! Tiap orang dapat giliran gambar sekali.'):'Menunggu host (👑) memulai game…';
+    $('start').hidden=!(iAmHost&&ps.length>=2);
+    if(g&&g.phase==='wait'){var cd=Math.max(0,(g.dur||WAIT_SECS)-Math.floor((Date.now()-seen.at)/1000));$('lobby-hint').textContent='⏳ Game mulai otomatis dalam '+cd+' detik… yang lain masih boleh nyusul masuk.'}
+    else $('lobby-hint').textContent='Kamu sudah masuk! Menunggu teman lain buka link ini (minimal 2 orang), nanti game mulai sendiri.';
   }
 
   if(inGame){
@@ -313,7 +320,7 @@ function update(){
   if(over){
     $('rank').innerHTML=ps.slice().sort(function(a,b){return (b.presence.s||0)-(a.presence.s||0)}).map(function(p,i){
       return '<li>'+(['🥇 ','🥈 ','🥉 '][i]||'')+esc(p.presence.name)+' — <b>'+(p.presence.s||0)+'</b></li>'}).join('');
-    $('again').hidden=!iAmHost;$('again-hint').textContent=iAmHost?'':'Menunggu host mengulang…';
+    $('again').hidden=!iAmHost;$('again-hint').textContent='Game baru mulai otomatis sebentar lagi…';
   }
 }
 setInterval(function(){tick();if(myName)update()},400);
