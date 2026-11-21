@@ -42,6 +42,14 @@ canvas{width:100%;height:100%;display:block;touch-action:none}
 .chip{background:var(--card);border-radius:99px;padding:5px 12px;font-size:14px}
 .chip.me{outline:2px solid var(--ac)}
 .pick-btn{display:block;width:100%;margin:8px 0;padding:16px;font-size:18px}
+#talk h3{margin:0 0 8px;font-size:16px}
+.ab{display:flex;gap:8px}
+.ab button{flex:1;background:var(--card2);color:var(--tx);text-align:left;font-weight:600;padding:12px;position:relative;overflow:hidden}
+.ab button.on{outline:3px solid var(--ac)}
+.ab button .cnt{display:block;margin-top:6px;font-size:13px;color:var(--ac)}
+.ab button .who{display:block;font-size:12px;font-weight:400;color:var(--mu)}
+.callout{margin-top:10px;padding:10px;border-radius:10px;background:#3a2f12;color:var(--ac);font-weight:600}
+.q{font-size:18px;font-weight:600;line-height:1.35}
 ol.rank{padding-left:22px;margin:8px 0}
 ol.rank li{padding:6px 0;font-size:18px}
 ul.pl{list-style:none;padding:0;margin:8px 0}
@@ -73,6 +81,7 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
     <form id="gf" class="row" hidden style="margin-top:10px"><input id="gi" type="text" maxlength="30" placeholder="Tebak gambarnya…" autocomplete="off"><button>Kirim</button></form>
     <div id="chat"></div>
     <div id="sb"></div>
+    <div id="talk" class="card" style="margin-top:12px"></div>
   </section>
 
   <section id="s-over" class="card" hidden>
@@ -87,9 +96,43 @@ ul.pl li{padding:8px 12px;background:var(--card2);border-radius:10px;margin:6px 
 (function(){
 'use strict';
 var WORDS=['sate','bakso','becak','wayang','batik','gunung','pantai','kucing','ayam','ikan','rumah','sepeda','motor','pesawat','kapal','hujan','pelangi','bulan','matahari','bintang','pohon','bunga','kursi','meja','kasur','bantal','laptop','kamera','kacamata','topi','sepatu','payung','jam','kunci','pintu','jendela','tangga','jembatan','sungai','api','es krim','pizza','burger','kopi','durian','pisang','nanas','semangka','monyet','gajah','jerapah','buaya','ular','kupu kupu','laba laba','hiu','penguin','robot','hantu','naga','raja','polisi','dokter','koki','gitar','piano','drum','bola','balon','kado','lilin','kue ulang tahun','nasi goreng','ojek','bajaj','kodok','sapi','kelinci','bebek','tikus','kura kura','cumi cumi','lampu','kulkas','kipas angin','sapu','gunting','sendok','telur','roti','jam dinding','roket','tenda','api unggun'];
+var TOPICS=[
+{k:'ab',a:'Makan mie instan tiap hari',b:'Nggak boleh main HP seminggu'},
+{k:'ab',a:'Bisa terbang tapi cuma setinggi 1 meter',b:'Bisa menghilang tapi cuma pas nggak ada yang lihat'},
+{k:'ab',a:'Selalu telat 10 menit',b:'Selalu kecepetan 30 menit'},
+{k:'ab',a:'Chat lama kamu dibaca satu grup',b:'Galeri HP kamu dibuka depan teman-teman 1 menit'},
+{k:'ab',a:'Liburan ke gunung',b:'Liburan ke pantai'},
+{k:'ab',a:'Hidup tanpa musik',b:'Hidup tanpa film'},
+{k:'ab',a:'Bisa baca pikiran tapi nggak bisa dimatiin',b:'Bisa lihat masa depan tapi cuma 5 menit'},
+{k:'ab',a:'Makan nasi tiap hari seumur hidup',b:'Nggak boleh makan nasi seumur hidup'},
+{k:'ab',a:'Jadi orang paling pintar tapi kesepian',b:'Jadi orang biasa tapi temannya banyak'},
+{k:'ab',a:'Nginep di rumah hantu semalam',b:'Naik wahana paling ekstrem 3 kali berturut-turut'},
+{k:'ab',a:'Sambal pedas banget tiap makan',b:'Semua makanan hambar tanpa bumbu'},
+{k:'ab',a:'Semua orang tahu isi DM kamu',b:'Semua orang tahu isi dompet kamu'},
+{k:'ab',a:'Kuota unlimited tapi sinyal lemot',b:'Kuota 1GB tapi sinyal ngebut'},
+{k:'ab',a:'Jadi kucing sehari',b:'Jadi burung sehari'},
+{k:'ab',a:'Tim bangun pagi',b:'Tim begadang'},
+{k:'ab',a:'Bisa ngomong sama hewan',b:'Bisa ngerti semua bahasa manusia'},
+{k:'ab',a:'Mantan tiba-tiba nyapa',b:'Gebetan nge-read doang'},
+{k:'ab',a:'Mandi air dingin tiap hari',b:'Nggak AC dan nggak kipas seumur hidup'},
+{k:'why',q:'Hal paling random yang pernah bikin kamu ketawa sampai nggak bisa berhenti?'},
+{k:'why',q:'Kenapa kamu bisa berteman sama orang-orang di ruangan ini? Awal ketemunya gimana?'},
+{k:'why',q:'Kejadian paling memalukan yang masih kamu inget? Ceritain kenapa bisa kejadian!'},
+{k:'why',q:'Kalau bisa pindah ke kota/negara mana pun besok, kamu pilih mana dan kenapa?'},
+{k:'why',q:'Makanan apa yang menurutmu overrated, dan kenapa?'},
+{k:'why',q:'Skill apa yang pengen kamu kuasai instan, dan buat apa?'},
+{k:'why',q:'Kebiasaan aneh kamu yang nggak banyak orang tahu? Kenapa bisa gitu?'},
+{k:'why',q:'Lagu apa yang kalau diputer langsung bikin kamu keinget sesuatu? Ingat apa?'},
+{k:'why',q:'Kalau besok libur dadakan seminggu, kamu mau ngapain dan kenapa?'},
+{k:'why',q:'Pernah nggak nyasar atau salah naik kendaraan? Ceritain dong kenapa bisa!'},
+{k:'why',q:'Film atau series yang nggak bakal bosan kamu tonton ulang, kenapa?'},
+{k:'why',q:'Siapa orang di sini yang menurutmu paling gampang panik? Kenapa?'},
+{k:'why',q:'Barang apa yang paling susah kamu buang walau udah nggak kepake? Kenapa?'},
+{k:'why',q:'Mimpi teraneh yang pernah kamu inget, ceritain!'}
+];
 var COLORS=['#111111','#e53935','#fb8c00','#fdd835','#43a047','#1e88e5','#8e24aa','#8d6e63','#ffffff'];
 var SIZES=[4,9,18];
-var DRAW_SECS=75, PICK_SECS=20, END_SECS=7, WAIT_SECS=12, AGAIN_SECS=20;
+var DRAW_SECS=40, PICK_SECS=8, END_SECS=10, WAIT_SECS=8, AGAIN_SECS=15;
 
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -128,12 +171,15 @@ function renderChat(){var c=$('chat');c.innerHTML=chatItems.map(function(i){retu
 function byT(a,b){return ((a.presence.t||0)-(b.presence.t||0))||(a.peer<b.peer?-1:1)}
 function startGame(){
   var ps=players().slice().sort(byT); if(ps.length<2)return;
-  pubG({phase:'pick',n:1,total:ps.length,order:ps.map(function(p){return p.peer}),drawer:ps[0].peer,dur:DRAW_SECS});
+  pubG({phase:'pick',n:1,total:ps.length,order:ps.map(function(p){return p.peer}),drawer:ps[0].peer,dur:DRAW_SECS,tq:pickTopic()});
 }
+var usedT={};
+function pickTopic(){var ids=[];TOPICS.forEach(function(t,i){if(!usedT[i])ids.push(i)});if(!ids.length){usedT={};TOPICS.forEach(function(t,i){ids.push(i)})}
+  var i=ids[Math.floor(Math.random()*ids.length)];usedT[i]=1;return i}
 function nextRound(g){
   if(g.n>=g.total)return pubG({phase:'over',n:g.n,total:g.total,order:g.order,drawer:g.drawer});
   var n=g.n+1;
-  pubG({phase:'pick',n:n,total:g.total,order:g.order,drawer:g.order[(n-1)%g.order.length],dur:DRAW_SECS});
+  pubG({phase:'pick',n:n,total:g.total,order:g.order,drawer:g.order[(n-1)%g.order.length],dur:DRAW_SECS,tq:pickTopic()});
 }
 function tick(){
   if(!R||!myName||!amHost())return;
@@ -208,6 +254,7 @@ document.addEventListener('click',function(e){
   else if(b.dataset.si!==undefined){cur.si=+b.dataset.si;buildTools()}
   else if(b.id==='clr'){if(canDraw()){clearCv();var g=curG();emit('c',{n:g.n})}}
   else if(b.dataset.w!==undefined){chooseWord(b.dataset.w)}
+  else if(b.dataset.ab){var gg=curG();if(gg)pres({ab:{n:gg.n,c:b.dataset.ab}})}
 });
 
 /* ---------- messages ---------- */
@@ -317,11 +364,46 @@ function update(){
       return '<span class="chip'+(m&&p.peer===m.peer?' me':'')+'">'+mark+esc(p.presence.name)+' · '+(p.presence.s||0)+'</span>'}).join('');
   }
 
+  if(inGame){
+    if(g.phase==='pick'&&m&&g.drawer===m.peer&&!myWord&&choices.length&&Date.now()-seen.at>PICK_SECS*1000)chooseWord(choices[0]);
+    renderTalk(g,ps,m);
+  }
+
   if(over){
     $('rank').innerHTML=ps.slice().sort(function(a,b){return (b.presence.s||0)-(a.presence.s||0)}).map(function(p,i){
       return '<li>'+(['🥇 ','🥈 ','🥉 '][i]||'')+esc(p.presence.name)+' — <b>'+(p.presence.s||0)+'</b></li>'}).join('');
     $('again').hidden=!iAmHost;$('again-hint').textContent='Game baru mulai otomatis sebentar lagi…';
   }
+}
+var lastTalk='';
+function renderTalk(g,ps,m){
+  var tp=TOPICS[g.tq],h='',ended=g.phase==='end';
+  if(!tp){$('talk').hidden=true;return}
+  $('talk').hidden=false;
+  if(tp.k==='ab'){
+    var votes=ps.map(function(p){var v=p.presence.ab;return {p:p,c:(v&&v.n===g.n&&(v.c==='a'||v.c==='b'))?v.c:null}});
+    var mine=(m&&m.presence.ab&&m.presence.ab.n===g.n)?m.presence.ab.c:null;
+    var reveal=ended||!!mine;
+    var A=votes.filter(function(x){return x.c==='a'}),B=votes.filter(function(x){return x.c==='b'});
+    function side(k,txt,arr){return '<button data-ab="'+k+'" class="'+(mine===k?'on':'')+'"><b>'+k.toUpperCase()+'.</b> '+esc(txt)+
+      (reveal?'<span class="cnt">'+arr.length+' orang</span>':'')+
+      (ended&&arr.length?'<span class="who">'+arr.map(function(x){return esc(x.p.presence.name)}).join(', ')+'</span>':'')+'</button>'}
+    h='<h3>🤔 Pilih satu! (ngobrolin sambil nunggu)</h3><div class="ab">'+side('a',tp.a,A)+side('b',tp.b,B)+'</div>';
+    if(ended){
+      var tot=A.length+B.length,msg='';
+      if(tot>=3&&(A.length===1||B.length===1)&&A.length!==B.length){var lone=A.length===1?A[0]:B[0];msg='👀 '+esc(lone.p.presence.name)+' sendirian di sini. Jelasin kenapa!'}
+      else if(tot>=2&&(A.length===0||B.length===0))msg='🤝 Kompak banget! Tapi kenapa pada milih itu?';
+      else if(tot>=2&&A.length===B.length)msg='⚔️ Imbang! Silakan debat, masing-masing kasih alasan.';
+      else if(tot<2)msg='Belum banyak yang milih. Pilih dong, terus ceritain alasannya!';
+      else msg='💬 Yang minoritas, bela pilihanmu!';
+      h+='<div class="callout">'+msg+'</div>';
+    }
+  }else{
+    h='<h3>🗣️ Kenapa? Bahan cerita</h3><div class="q">'+esc(tp.q)+'</div>';
+    if(ended){var order=ps.slice().sort(byT);if(order.length){var who=order[g.n%order.length];h+='<div class="callout">🎤 '+esc(who.presence.name)+', giliran kamu cerita! Yang lain boleh nyaut.</div>'}}
+    else h+='<div class="muted" style="margin-top:8px">Siapa yang jawab? Nanti ketahuan pas ronde selesai 😏</div>';
+  }
+  if(h!==lastTalk){lastTalk=h;$('talk').innerHTML=h}
 }
 setInterval(function(){tick();if(myName)update()},400);
 
